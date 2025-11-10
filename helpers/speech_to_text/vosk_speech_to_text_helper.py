@@ -7,6 +7,7 @@ Provides offline speech recognition without internet connection
 import json
 import logging
 import os
+import threading
 
 import pyaudio
 from vosk import Model, KaldiRecognizer, SetLogLevel
@@ -45,6 +46,7 @@ class VoskSpeechToTextHelper:
 
         self._model = Model(model_path)
         self._recognizer = KaldiRecognizer(self._model, 16000)
+        self._stop_event = threading.Event()
 
     def _open_microphone_stream(self) -> pyaudio.Stream:
         """Open microphone audio stream for recording"""
@@ -70,28 +72,44 @@ class VoskSpeechToTextHelper:
         Args:
             duration_seconds: Duration to listen in seconds. 0 means listen until something is detected.
         """
+        # Reset the stop event before starting
+        self._stop_event.clear()
 
         stream: pyaudio.Stream = self._open_microphone_stream()
         stream.start_stream()
-
-        elapsed_time = 0
         start_time = os.times()[4]
 
         logger.info("Listening for speech...")
         result = ""
-        while (elapsed_time < duration_seconds and duration_seconds > 0) or (duration_seconds == 0 and result == ""):
-            data = stream.read(4096, exception_on_overflow=False)
 
-            if len(data) == 0:
-                break
+        try:
+            while not self._stop_event.is_set():
+                # Check time conditions
+                elapsed_time = os.times()[4] - start_time
+                if duration_seconds > 0 and elapsed_time >= duration_seconds:
+                    break
 
-            if self._recognizer.AcceptWaveform(data):
-                parsed_result = json.loads(self._recognizer.Result())
-                result = parsed_result.get("text", "")
+                # Stop when we get a result
+                if result != "":
+                    break
 
-            elapsed_time = os.times()[4] - start_time
+                data = stream.read(4096, exception_on_overflow=False)
+                if len(data) == 0:
+                    break
+
+                if self._recognizer.AcceptWaveform(data):
+                    parsed_result = json.loads(self._recognizer.Result())
+                    result = parsed_result.get("text", "")
+
+        finally:
+            stream.stop_stream()
+            stream.close()
 
         return result
+
+    def stop_listening(self):
+        """Stop the current listening operation"""
+        self._stop_event.set()
 
 
 def main():
