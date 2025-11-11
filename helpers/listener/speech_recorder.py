@@ -86,7 +86,9 @@ class SpeechRecorder:
         while self._stream is not None:
             # duration guard
             if duration_seconds > 0 and (time.time() - start_time) >= duration_seconds:
-                break
+                # Allow user to finish speaking if they already started
+                if not speech_started:
+                    break
 
             try:
                 chunk_bytes = stream.read(chunk, exception_on_overflow=False)
@@ -104,19 +106,17 @@ class SpeechRecorder:
             if not speech_started:
                 if rms >= start_threshold:
                     speech_started = True
-                    buffer.extend(chunk_bytes)
-                    silence_frames = 0
                 else:
                     continue
+
+            buffer.extend(chunk_bytes)
+
+            if rms < silence_threshold:
+                silence_frames += 1
             else:
-                buffer.extend(chunk_bytes)
+                silence_frames = 0
 
-                if rms < silence_threshold:
-                    silence_frames += 1
-                else:
-                    silence_frames = 0
-
-                if silence_frames >= silence_max_frames:
-                    break
+            if silence_frames >= silence_max_frames:
+                break
 
         return bytes(buffer)
