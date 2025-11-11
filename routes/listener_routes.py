@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Body
 from helpers.listener.microphone_listener import MicrophoneListener
 from middleware.auth import require_auth
@@ -6,7 +7,17 @@ from middleware.auth import require_auth
 router = APIRouter()
 
 # Global state for tracking listening status
-microphone_listener: MicrophoneListener = MicrophoneListener()
+RECORDER_CHUNK_SIZE: int = int(os.getenv("RECORDER_CHUNK_SIZE", "4096"))
+RECORDER_START_THRESHOLD: int = int(os.getenv("RECORDER_START_THRESHOLD", "0"))
+RECORDER_SILENCE_THRESHOLD: int = int(os.getenv("RECORDER_SILENCE_THRESHOLD", "0"))
+RECORDER_SILENCE_FRAMES: int = int(os.getenv("RECORDER_SILENCE_FRAMES", "0"))
+
+microphone_listener: MicrophoneListener = MicrophoneListener(
+    recorder_chunk_size=RECORDER_CHUNK_SIZE,
+    recorder_start_threshold=RECORDER_START_THRESHOLD,
+    recorder_silence_threshold=RECORDER_SILENCE_THRESHOLD,
+    recorder_silence_max_frames=RECORDER_SILENCE_FRAMES,
+)
 
 
 @router.post("/start-listening")

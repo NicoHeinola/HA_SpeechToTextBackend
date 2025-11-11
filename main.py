@@ -20,5 +20,9 @@ if __name__ == "__main__":
 
     HOST: str = os.getenv("HOST", "")
     PORT: int = int(os.getenv("PORT", ""))
+    HOT_RELOADING: bool = os.getenv("HOT_RELOADING", "False").lower() in ("true", "1", "t")
 
-    uvicorn.run(app, host=HOST, port=PORT)
+    if HOT_RELOADING:
+        uvicorn.run("main:app", host=HOST, port=PORT, reload=True)
+    else:
+        uvicorn.run(app=app, host=HOST, port=PORT)
