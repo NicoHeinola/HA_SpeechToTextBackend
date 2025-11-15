@@ -58,7 +58,7 @@ class MicrophoneListener:
         )
 
         if response.status_code != 200:
-            logger.error(f"Text to Action backend returned error: {response.text}")
+            logger.warning(f"Text to Action backend returned error: {response.text}")
             return
 
         response_data: dict = response.json()
@@ -86,7 +86,7 @@ class MicrophoneListener:
         )
 
         if response.status_code != 200:
-            logger.error(f"Failed to execute action: {response.text}")
+            logger.warning(f"Failed to execute action: {response.text}")
 
     def _listen_loop(self, duration_seconds: int):
         stream: pyaudio.Stream = self._open_microphone_stream()
@@ -119,17 +119,34 @@ class MicrophoneListener:
         audio_backend_token: str = os.getenv("AUDIO_BACKEND_TOKEN", "")
 
         audio_backend_url: str = f"{audio_backend_host}:{audio_backend_port}"
-        data = buffer_bytes
+
+        # Make the audio easier to convert to text
+        logger.info("Enhancing audio for speech recognition...")
+        response = requests.post(
+            f"{audio_backend_url}/mixer/speed-up",
+            headers={"Authorization": f"Bearer {audio_backend_token}"},
+            files={
+                "file": ("recording.raw", buffer_bytes, "application/octet-stream"),
+            },
+            data={"speed": "2.0"},
+        )
+
+        if response.status_code != 200:
+            logger.warning(f"Audio enhancement failed: {response.text}")
+            return
 
         # Convert speech to text via Audio Backend
-        response: requests.Response = requests.post(
+        logger.info("Converting speech to text...")
+        buffer_bytes = response.content
+        response = requests.post(
             f"{audio_backend_url}/speech-to-text",
             headers={"Authorization": f"Bearer {audio_backend_token}"},
-            files={"file": ("recording.raw", data, "application/octet-stream")},
+            files={"file": ("recording.raw", buffer_bytes, "application/octet-stream")},
         )
 
         text: str = response.json().get("text", "")
         if not text:
+            logger.info("No speech recognized.")
             return
 
         logger.info(f"Recognized text: '{text}'")
