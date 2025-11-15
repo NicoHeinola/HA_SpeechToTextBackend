@@ -1,3 +1,5 @@
+import io
+import wave
 import logging
 import os
 import threading
@@ -16,13 +18,23 @@ class MicrophoneListener:
         self._is_listening = False
         self._listening_thread: threading.Thread | None = None
 
-        self._recorder_chunk_size: int = kwargs.get("recorder_chunk_size", 4096)
-        self._recorder_start_threshold: int = kwargs.get("recorder_start_threshold", 0)
-        self._recorder_silence_threshold: int = kwargs.get("recorder_silence_threshold", 0)
-        self._recorder_silence_max_frames: int = kwargs.get("recorder_silence_max_frames", 0)
+        self._recorder_chunk_size = kwargs.get("recorder_chunk_size", 4096)
+        self._recorder_start_threshold = kwargs.get("recorder_start_threshold", 0)
+        self._recorder_silence_threshold = kwargs.get("recorder_silence_threshold", 0)
+        self._recorder_silence_max_frames = kwargs.get("recorder_silence_max_frames", 0)
 
-        recorder_args: dict = kwargs.get("recorder_args", {})
-        self._recorder: SpeechRecorder = SpeechRecorder(**recorder_args)
+        recorder_args = kwargs.get("recorder_args", {})
+        self._recorder = SpeechRecorder(**recorder_args)
+
+    def _pcm16le_to_wav(self, pcm_bytes, sample_rate=16000, channels=1):
+        """Convert raw PCM 16-bit mono audio to WAV format in memory."""
+        wav_buffer = io.BytesIO()
+        with wave.open(wav_buffer, "wb") as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(2)  # 16 bits = 2 bytes
+            wf.setframerate(sample_rate)
+            wf.writeframes(pcm_bytes)
+        return wav_buffer.getvalue()
 
     @property
     def is_listening(self) -> bool:
@@ -120,15 +132,17 @@ class MicrophoneListener:
 
         audio_backend_url: str = f"{audio_backend_host}:{audio_backend_port}"
 
-        # Make the audio easier to convert to text
+        # Enhance audio for better speech recognition
         logger.info("Enhancing audio for speech recognition...")
+
+        wav_bytes = self._pcm16le_to_wav(buffer_bytes, sample_rate=16000, channels=1)
         response = requests.post(
             f"{audio_backend_url}/mixer/speed-up",
             headers={"Authorization": f"Bearer {audio_backend_token}"},
             files={
-                "file": ("recording.raw", buffer_bytes, "application/octet-stream"),
+                "file": ("recording.wav", wav_bytes, "audio/wav"),
+                "speed": (None, "1.05", "text/plain"),
             },
-            data={"speed": "2.0"},
         )
 
         if response.status_code != 200:
@@ -138,10 +152,12 @@ class MicrophoneListener:
         # Convert speech to text via Audio Backend
         logger.info("Converting speech to text...")
         buffer_bytes = response.content
+
+        # Send the enhanced WAV audio as-is to the backend
         response = requests.post(
             f"{audio_backend_url}/speech-to-text",
             headers={"Authorization": f"Bearer {audio_backend_token}"},
-            files={"file": ("recording.raw", buffer_bytes, "application/octet-stream")},
+            files={"file": ("recording.wav", buffer_bytes, "audio/wav")},
         )
 
         text: str = response.json().get("text", "")
