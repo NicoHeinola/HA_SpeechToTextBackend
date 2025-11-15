@@ -167,7 +167,7 @@ class MicrophoneListener:
 
         logger.info(f"Recognized text: '{text}'")
 
-        activation_keywords = os.getenv("ACTICATION_KEYWORDS", "").split(",")
+        activation_keywords = os.getenv("ACTIVATION_KEYWORDS", "").split(",")
         for keyword in activation_keywords:
             activation: bool = False
             if text.lower().startswith(keyword.strip().lower()):
