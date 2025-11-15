@@ -57,6 +57,10 @@ class MicrophoneListener:
             json={"text": text},
         )
 
+        if response.status_code != 200:
+            logger.error(f"Text to Action backend returned error: {response.text}")
+            return
+
         response_data: dict = response.json()
         action: str = response_data.get("action", "")
         if not action:
@@ -125,24 +129,27 @@ class MicrophoneListener:
         )
 
         text: str = response.json().get("text", "")
-        if text:
-            activation_keywords = os.getenv("ACTICATION_KEYWORDS", "").split(",")
-            logger.info(f"Recognized text: '{text}'")
-            for keyword in activation_keywords:
-                activation: bool = False
-                if text.lower().startswith(keyword.strip().lower()):
-                    activation = True
-                    text = text.lower().replace(keyword.strip().lower(), "", 1).strip()
-                elif text.lower().endswith(keyword.strip().lower()):
-                    activation = True
-                    text = text.lower().rsplit(keyword.strip().lower(), 1)[0].strip()
+        if not text:
+            return
 
-                if not activation:
-                    continue
+        logger.info(f"Recognized text: '{text}'")
 
-                logger.info(f"Activation keyword '{keyword}' detected.")
-                self._handle_converted_audio(text)
-                break
+        activation_keywords = os.getenv("ACTICATION_KEYWORDS", "").split(",")
+        for keyword in activation_keywords:
+            activation: bool = False
+            if text.lower().startswith(keyword.strip().lower()):
+                activation = True
+                text = text.lower().replace(keyword.strip().lower(), "", 1).strip()
+            elif text.lower().endswith(keyword.strip().lower()):
+                activation = True
+                text = text.lower().rsplit(keyword.strip().lower(), 1)[0].strip()
+
+            if not activation:
+                continue
+
+            logger.info(f"Activation keyword '{keyword}' detected.")
+            self._handle_converted_audio(text)
+            break
 
     def start_listening(self, duration_seconds: int):
         if self.is_listening:
