@@ -57,6 +57,25 @@ class MicrophoneListener:
 
         return stream
 
+    def _playback_ai_answer(self, ai_answer: str):
+        # Send action to the Action Runner
+        ha_backend_host: str = os.getenv("HA_BACKEND_HOST", "")
+        ha_backend_port: int = int(os.getenv("HA_BACKEND_PORT", "0"))
+        ha_backend_token: str = os.getenv("HA_BACKEND_TOKEN", "")
+
+        json_data: dict = {"ai_answer": ai_answer}
+
+        logger.info(f"Playing back AI answer: '{ai_answer}'")
+
+        response: requests.Response = requests.post(
+            f"{ha_backend_host}:{ha_backend_port}/api/ai/playback",
+            headers={"Authorization": f"Bearer {ha_backend_token}", "Accept": "application/json"},
+            json=json_data,
+        )
+
+        if response.status_code != 200:
+            logger.warning(f"Failed to playback AI answer: {response.text}")
+
     def _handle_converted_audio(self, text: str):
         # Convert text to actions via Language Model Backend
         tta_backend_host: str = os.getenv("TEXT_TO_ACTION_BACKEND_HOST", "")
@@ -83,15 +102,19 @@ class MicrophoneListener:
         params: dict = response_data.get("params", {})
         ai_answer: str = response_data.get("ai_answer", "")
 
-        json_data: dict = {"action": {"name": action, "params": params}, "ai_answer": ai_answer}
+        json_data: dict = {"action": {"name": action, "params": params}}
 
-        logger.info(f"Executing action: '{action}' with params: '{params}' and ai_answer: '{ai_answer}'")
+        logger.info(f"Executing action: '{action}' with params: '{params}'")
 
         response: requests.Response = requests.post(
             f"{ha_backend_host}:{ha_backend_port}/api/action-runner/run-action",
             headers={"Authorization": f"Bearer {ha_backend_token}", "Accept": "application/json"},
             json=json_data,
         )
+
+        # Playback AI answer if available
+        if ai_answer:
+            threading.Thread(target=self._playback_ai_answer, args=(ai_answer,)).start()
 
         if response.status_code != 200:
             logger.warning(f"Failed to execute action: {response.text}")
