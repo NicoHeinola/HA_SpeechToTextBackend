@@ -54,8 +54,7 @@ class MicrophoneListener:
             json=json_data,
         )
 
-        if response.status_code != 200:
-            logger.warning(f"Failed to playback AI answer: {response.text}")
+        logger.info(f"AI answer playback response: {response.status_code} - {response.text}")
 
     def _handle_converted_audio(self, text: str):
         # Convert text to actions via Language Model Backend
